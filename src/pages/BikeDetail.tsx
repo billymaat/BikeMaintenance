@@ -2,7 +2,9 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Pencil, Gauge, Plus, Search, X } from 'lucide-react'
 import { useData } from '../contexts/DataContext'
+import { useAuth } from '../contexts/AuthContext'
 import { computeTaskStatus, hasPositions, taskLabel } from '../lib/reminders'
+import { effectiveUnit } from '../lib/units'
 import { StatusBadge, worstStatus } from '../components/StatusBadge'
 import type { ReminderRule, TaskStatus, TaskType } from '../types'
 
@@ -21,6 +23,7 @@ const STATUS_ORDER = { overdue: 0, due_soon: 1, ok: 2, not_tracked: 3 }
 export function BikeDetail() {
   const { id } = useParams()
   const { bikes, taskTypes, logs, rules, updateBike, upsertRule, deleteRule } = useData()
+  const { profile } = useAuth()
 
   const bike = bikes.find((b) => b.id === id)
   const [showMileageForm, setShowMileageForm] = useState(false)
@@ -32,7 +35,7 @@ export function BikeDetail() {
 
   if (!bike) return <Navigate to="/" replace />
 
-  const unit = bike.unit_override ?? 'mi'
+  const unit = effectiveUnit(bike, profile)
 
   // Task types with at least one position (or the whole task) not yet tracked on this bike.
   const untrackedTaskTypes = taskTypes.filter((t) => untrackedPositions(t, bikeRules).length > 0)
