@@ -114,8 +114,10 @@ create policy "task_type_presets: read all" on public.task_type_presets for sele
 
 create policy "task_types: read own" on public.task_types for select using (user_id = auth.uid());
 create policy "task_types: insert own" on public.task_types for insert with check (user_id = auth.uid());
-create policy "task_types: update own" on public.task_types for update using (user_id = auth.uid());
-create policy "task_types: delete own" on public.task_types for delete using (user_id = auth.uid());
+-- Preset (default) task types are read-only: they can't be edited or deleted.
+create policy "task_types: update own" on public.task_types for update
+  using (user_id = auth.uid() and not is_preset) with check (user_id = auth.uid() and not is_preset);
+create policy "task_types: delete own" on public.task_types for delete using (user_id = auth.uid() and not is_preset);
 
 create policy "bikes: read own" on public.bikes for select using (user_id = auth.uid());
 create policy "bikes: insert own" on public.bikes for insert with check (user_id = auth.uid());

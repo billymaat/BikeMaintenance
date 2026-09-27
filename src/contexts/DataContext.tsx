@@ -104,6 +104,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }
 
   async function updateTaskType(id: string, patch: Partial<TaskType>) {
+    if (taskTypes.find((t) => t.id === id)?.is_preset) throw new Error('Default task types are read-only')
     const { error } = await supabase.from('task_types').update(patch).eq('id', id)
     if (error) throw error
 
@@ -154,6 +155,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }
 
   async function deleteTaskType(id: string) {
+    if (taskTypes.find((t) => t.id === id)?.is_preset) throw new Error('Default task types cannot be deleted')
     const { error } = await supabase.from('task_types').delete().eq('id', id)
     if (error) throw error
     await refresh()

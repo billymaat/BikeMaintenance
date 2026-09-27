@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Pencil, Plus, Trash2, X } from 'lucide-react'
+import { Lock, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { useData } from '../contexts/DataContext'
 import type { IntervalType, TaskType } from '../types'
 
@@ -33,26 +33,35 @@ export function TaskTypes() {
             className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900"
           >
             <div>
-              <p className="font-medium text-slate-900 dark:text-slate-100">{t.name}</p>
+              <p className="flex items-center gap-2 font-medium text-slate-900 dark:text-slate-100">
+                {t.name}
+                {t.is_preset && (
+                  <span className="flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-normal text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                    <Lock size={11} /> Default
+                  </span>
+                )}
+              </p>
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 {describeInterval(t)}
                 {t.positions?.length ? ` · ${t.positions.join(' / ')}` : ''}
               </p>
             </div>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setEditing(t)}
-                className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-              >
-                <Pencil size={16} />
-              </button>
-              <button
-                onClick={() => handleDelete(t)}
-                className="rounded-lg p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40"
-              >
-                <Trash2 size={16} />
-              </button>
-            </div>
+            {!t.is_preset && (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setEditing(t)}
+                  className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+                >
+                  <Pencil size={16} />
+                </button>
+                <button
+                  onClick={() => handleDelete(t)}
+                  className="rounded-lg p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>
