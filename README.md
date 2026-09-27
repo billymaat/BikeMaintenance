@@ -46,9 +46,11 @@ Open **SQL Editor → New query** in the Supabase dashboard, paste in the conten
 
 - `profiles`, `bikes`, `task_types`, `maintenance_logs`, `reminder_rules`, `push_subscriptions` tables
 - Row Level Security policies so each user only ever sees their own data
-- A trigger that, on signup, creates a profile and copies a starter list of preset task types (chain lube, chain replacement, brake pads, tire replacement, cable replacement, bearing service, full tune-up) into the new user's account
+- A trigger that, on signup, creates a profile and copies a starter list of preset task types into the new user's account. Some presets are tracked per position, e.g. tyres and brake pads per Front / Rear, and cables per Front brake / Rear brake / Front shift / Rear shift
 
 Feel free to edit the `insert into public.task_type_presets` block at the bottom before running it if you want different presets/intervals — it only affects *future* signups (existing users can always edit their own task types in the app).
+
+**Upgrading an existing database?** Run the files in [`supabase/migrations/`](supabase/migrations) in order instead of re-running `schema.sql`. `002_task_positions.sql` adds per-position tracking. It also splits existing users' preset tyre, brake pad and cable tasks into positions, carrying over each bike's interval. Existing logs count towards every position, so no history is lost.
 
 ### 4. Configure email auth
 
@@ -129,6 +131,7 @@ src/
   sw.ts          service worker source (precaching + push handling)
 supabase/
   schema.sql               tables, RLS policies, new-user seeding trigger
+  migrations/              upgrades for databases created from an older schema.sql
   functions/send-reminders/  edge function that sends push notifications
 ```
 

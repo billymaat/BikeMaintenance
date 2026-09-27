@@ -34,7 +34,10 @@ export function TaskTypes() {
           >
             <div>
               <p className="font-medium text-slate-900 dark:text-slate-100">{t.name}</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">{describeInterval(t)}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {describeInterval(t)}
+                {t.positions?.length ? ` · ${t.positions.join(' / ')}` : ''}
+              </p>
             </div>
             <div className="flex items-center gap-1">
               <button
@@ -76,6 +79,17 @@ function describeInterval(t: TaskType): string {
   return parts.length ? parts.join(' or ') : 'No default interval'
 }
 
+const POSITION_PRESETS: { label: string; positions: string[] }[] = [
+  { label: 'None', positions: [] },
+  { label: 'Front / Rear', positions: ['Front', 'Rear'] },
+  { label: 'Fork / Shock', positions: ['Fork', 'Shock'] },
+  { label: 'Brake & shift cables', positions: ['Front brake', 'Rear brake', 'Front shift', 'Rear shift'] },
+]
+
+function parsePositions(text: string): string[] {
+  return [...new Set(text.split(',').map((p) => p.trim()).filter(Boolean))]
+}
+
 function TaskTypeDialog({
   taskType,
   onClose,
@@ -88,8 +102,12 @@ function TaskTypeDialog({
     default_interval_type: IntervalType
     default_interval_miles: number | null
     default_interval_days: number | null
+    positions: string[] | null
   }) => void
 }) {
+  const [positionsText, setPositionsText] = useState(taskType?.positions?.join(', ') ?? '')
+  const positions = parsePositions(positionsText)
+  const removedPositions = (taskType?.positions ?? []).filter((p) => !positions.includes(p))
   const [name, setName] = useState(taskType?.name ?? '')
   const [miles, setMiles] = useState(taskType?.default_interval_miles != null ? String(taskType.default_interval_miles) : '')
   const [days, setDays] = useState(taskType?.default_interval_days != null ? String(taskType.default_interval_days) : '')
@@ -110,6 +128,7 @@ function TaskTypeDialog({
       default_interval_type: intervalType,
       default_interval_miles: intervalMiles,
       default_interval_days: intervalDays,
+      positions: positions.length ? positions : null,
     })
   }
 
@@ -164,6 +183,42 @@ function TaskTypeDialog({
             />
           </label>
         </div>
+
+        <label className="mt-3 block">
+          <span className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
+            Track separately for (comma-separated, optional)
+          </span>
+          <input
+            value={positionsText}
+            onChange={(e) => setPositionsText(e.target.value)}
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+            placeholder="e.g. Front, Rear"
+          />
+        </label>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {POSITION_PRESETS.map((preset) => {
+            const selected = preset.positions.join(',') === positions.join(',')
+            return (
+              <button
+                key={preset.label}
+                type="button"
+                onClick={() => setPositionsText(preset.positions.join(', '))}
+                className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
+                  selected
+                    ? 'border-blue-600 bg-blue-50 text-blue-700 dark:border-blue-500 dark:bg-blue-950/40 dark:text-blue-300'
+                    : 'border-slate-300 text-slate-600 dark:border-slate-700 dark:text-slate-400'
+                }`}
+              >
+                {preset.label}
+              </button>
+            )
+          })}
+        </div>
+        {removedPositions.length > 0 && (
+          <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+            Removing {removedPositions.join(', ')} stops tracking it on every bike. Its past logs are kept.
+          </p>
+        )}
 
         {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
 

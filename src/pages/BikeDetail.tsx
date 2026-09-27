@@ -2,18 +2,30 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Pencil, Gauge, Plus, Search, X } from 'lucide-react'
 import { useData } from '../contexts/DataContext'
-import { computeTaskStatus } from '../lib/reminders'
-import { StatusBadge } from '../components/StatusBadge'
-import type { TaskType } from '../types'
+import { computeTaskStatus, hasPositions, taskLabel } from '../lib/reminders'
+import { StatusBadge, worstStatus } from '../components/StatusBadge'
+import type { ReminderRule, TaskStatus, TaskType } from '../types'
+
+interface TrackedEntry {
+  rule: ReminderRule
+  status: TaskStatus
+}
+
+interface TrackedGroup {
+  taskType: TaskType
+  entries: TrackedEntry[]
+}
+
+const STATUS_ORDER = { overdue: 0, due_soon: 1, ok: 2, not_tracked: 3 }
 
 export function BikeDetail() {
   const { id } = useParams()
-  const { bikes, taskTypes, logs, rules, updateBike, upsertRule } = useData()
+  const { bikes, taskTypes, logs, rules, updateBike, upsertRule, deleteRule } = useData()
 
   const bike = bikes.find((b) => b.id === id)
   const [showMileageForm, setShowMileageForm] = useState(false)
   const [showAddTask, setShowAddTask] = useState(false)
-  const [editingRuleTaskTypeId, setEditingRuleTaskTypeId] = useState<string | null>(null)
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null)
 
   const bikeLogs = useMemo(() => logs.filter((l) => l.bike_id === id), [logs, id])
   const bikeRules = useMemo(() => rules.filter((r) => r.bike_id === id), [rules, id])
@@ -21,20 +33,25 @@ export function BikeDetail() {
   if (!bike) return <Navigate to="/" replace />
 
   const unit = bike.unit_override ?? 'mi'
-  const trackedTaskTypeIds = new Set(bikeRules.map((r) => r.task_type_id))
-  const untrackedTaskTypes = taskTypes.filter((t) => !trackedTaskTypeIds.has(t.id))
 
-  const taskStatuses = bikeRules
-    .map((rule) => {
-      const taskType = taskTypes.find((t) => t.id === rule.task_type_id)
-      if (!taskType) return null
-      return { rule, taskType, status: computeTaskStatus({ bike, taskType, rule, logs: bikeLogs }) }
+  // Task types with at least one position (or the whole task) not yet tracked on this bike.
+  const untrackedTaskTypes = taskTypes.filter((t) => untrackedPositions(t, bikeRules).length > 0)
+
+  const groups: TrackedGroup[] = taskTypes
+    .map((taskType) => {
+      const positionOrder = taskType.positions ?? []
+      const entries = bikeRules
+        .filter((rule) => rule.task_type_id === taskType.id)
+        .map((rule) => ({ rule, status: computeTaskStatus({ bike, taskType, rule, logs: bikeLogs }) }))
+        .sort((a, b) => positionOrder.indexOf(a.rule.position) - positionOrder.indexOf(b.rule.position))
+      return { taskType, entries }
     })
-    .filter((x): x is { rule: (typeof bikeRules)[number]; taskType: TaskType; status: ReturnType<typeof computeTaskStatus> } => x !== null)
-    .sort((a, b) => {
-      const order = { overdue: 0, due_soon: 1, ok: 2, not_tracked: 3 }
-      return order[a.status.status] - order[b.status.status]
-    })
+    .filter((g) => g.entries.length > 0)
+    .sort((a, b) => STATUS_ORDER[groupStatus(a)] - STATUS_ORDER[groupStatus(b)])
+
+  const editingEntry = groups
+    .flatMap((g) => g.entries.map((e) => ({ ...e, taskType: g.taskType })))
+    .find((e) => e.rule.id === editingRuleId)
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -109,38 +126,42 @@ export function BikeDetail() {
               </div>
             </div>
 
-            {taskStatuses.length === 0 ? (
+            {groups.length === 0 ? (
               <p className="rounded-xl border border-dashed border-slate-300 p-4 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
                 No tasks tracked yet.
               </p>
             ) : (
               <div className="flex flex-col gap-2">
-                {taskStatuses.map(({ rule, taskType, status }) => (
-                  <div
-                    key={rule.id}
-                    className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="font-medium text-slate-900 dark:text-slate-100">{taskType.name}</p>
-                        <StatusBadge status={status.status} />
+                {groups.map((group) =>
+                  hasPositions(group.taskType) ? (
+                    <PositionGroupCard
+                      key={group.taskType.id}
+                      group={group}
+                      bikeId={bike.id}
+                      unit={unit}
+                      onEdit={setEditingRuleId}
+                    />
+                  ) : (
+                    group.entries.map(({ rule, status }) => (
+                      <div
+                        key={rule.id}
+                        className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium text-slate-900 dark:text-slate-100">{group.taskType.name}</p>
+                            <StatusBadge status={status.status} />
+                          </div>
+                          <StatusLine status={status} unit={unit} />
+                        </div>
+                        <RowActions
+                          logHref={`/log?bike=${bike.id}&task=${group.taskType.id}`}
+                          onEdit={() => setEditingRuleId(rule.id)}
+                        />
                       </div>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {status.lastServiceDate
-                          ? `Last: ${status.lastServiceDate}${status.lastServiceMileage != null ? ` at ${status.lastServiceMileage.toLocaleString()} ${unit}` : ''}`
-                          : 'Never logged'}
-                        {status.nextDueMileage != null && ` · Due at ${status.nextDueMileage.toLocaleString()} ${unit}`}
-                        {status.nextDueDate && ` · Due ${status.nextDueDate}`}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => setEditingRuleTaskTypeId(taskType.id)}
-                      className="shrink-0 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-                    >
-                      <Pencil size={16} />
-                    </button>
-                  </div>
-                ))}
+                    ))
+                  ),
+                )}
               </div>
             )}
           </div>
@@ -148,45 +169,143 @@ export function BikeDetail() {
           {showAddTask && (
             <TrackTaskDialog
               options={untrackedTaskTypes}
+              untrackedPositionsFor={(taskType) => untrackedPositions(taskType, bikeRules)}
               onClose={() => setShowAddTask(false)}
-              onSave={async (taskType) => {
-                await upsertRule({
-                  bike_id: bike.id,
-                  task_type_id: taskType.id,
-                  interval_miles: taskType.default_interval_miles,
-                  interval_days: taskType.default_interval_days,
-                })
+              onSave={async (taskType, positions) => {
+                for (const position of positions) {
+                  await upsertRule({
+                    bike_id: bike.id,
+                    task_type_id: taskType.id,
+                    position,
+                    interval_miles: taskType.default_interval_miles,
+                    interval_days: taskType.default_interval_days,
+                  })
+                }
                 setShowAddTask(false)
               }}
             />
           )}
 
-          {editingRuleTaskTypeId &&
-            (() => {
-              const entry = taskStatuses.find((t) => t.taskType.id === editingRuleTaskTypeId)
-              if (!entry) return null
-              return (
-                <EditIntervalDialog
-                  taskTypeName={entry.taskType.name}
-                  intervalMiles={entry.rule.interval_miles}
-                  intervalDays={entry.rule.interval_days}
-                  unit={unit}
-                  onClose={() => setEditingRuleTaskTypeId(null)}
-                  onSave={async (intervalMiles, intervalDays) => {
-                    await upsertRule({
-                      bike_id: bike.id,
-                      task_type_id: entry.taskType.id,
-                      interval_miles: intervalMiles,
-                      interval_days: intervalDays,
-                    })
-                    setEditingRuleTaskTypeId(null)
-                  }}
-                />
-              )
-            })()}
+          {editingEntry && (
+            <EditIntervalDialog
+              title={taskLabel(editingEntry.taskType.name, editingEntry.rule.position)}
+              intervalMiles={editingEntry.rule.interval_miles}
+              intervalDays={editingEntry.rule.interval_days}
+              unit={unit}
+              onClose={() => setEditingRuleId(null)}
+              onSave={async (intervalMiles, intervalDays) => {
+                await upsertRule({
+                  bike_id: bike.id,
+                  task_type_id: editingEntry.taskType.id,
+                  position: editingEntry.rule.position,
+                  interval_miles: intervalMiles,
+                  interval_days: intervalDays,
+                })
+                setEditingRuleId(null)
+              }}
+              onStopTracking={async () => {
+                const label = taskLabel(editingEntry.taskType.name, editingEntry.rule.position)
+                if (!confirm(`Stop tracking ${label} on ${bike.name}? Its history is kept.`)) return
+                await deleteRule(editingEntry.rule.id)
+                setEditingRuleId(null)
+              }}
+            />
+          )}
         </div>
 
         <History bikeId={bike.id} unit={unit} />
+      </div>
+    </div>
+  )
+}
+
+function groupStatus(group: TrackedGroup) {
+  return worstStatus(group.entries.map((e) => e.status.status))
+}
+
+/** Positions of a task type (or '' for a single-item task) with no rule on this bike yet. */
+function untrackedPositions(taskType: TaskType, bikeRules: ReminderRule[]): string[] {
+  const keys = hasPositions(taskType) ? taskType.positions! : ['']
+  return keys.filter((p) => !bikeRules.some((r) => r.task_type_id === taskType.id && r.position === p))
+}
+
+function StatusLine({ status, unit }: { status: TaskStatus; unit: string }) {
+  return (
+    <p className="text-xs text-slate-500 dark:text-slate-400">
+      {status.lastServiceDate
+        ? `Last: ${status.lastServiceDate}${status.lastServiceMileage != null ? ` at ${status.lastServiceMileage.toLocaleString()} ${unit}` : ''}`
+        : 'Never logged'}
+      {status.nextDueMileage != null && ` · Due at ${status.nextDueMileage.toLocaleString()} ${unit}`}
+      {status.nextDueDate && ` · Due ${status.nextDueDate}`}
+    </p>
+  )
+}
+
+function RowActions({ logHref, onEdit }: { logHref: string; onEdit: () => void }) {
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      <Link
+        to={logHref}
+        className="rounded-lg px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/40"
+      >
+        Log
+      </Link>
+      <button
+        onClick={onEdit}
+        aria-label="Edit interval"
+        className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+      >
+        <Pencil size={16} />
+      </button>
+    </div>
+  )
+}
+
+/** One card per task type, with a sub-row per tracked position (e.g. Front / Rear). */
+function PositionGroupCard({
+  group,
+  bikeId,
+  unit,
+  onEdit,
+}: {
+  group: TrackedGroup
+  bikeId: string
+  unit: string
+  onEdit: (ruleId: string) => void
+}) {
+  const { taskType, entries } = group
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <p className="font-medium text-slate-900 dark:text-slate-100">{taskType.name}</p>
+          <StatusBadge status={groupStatus(group)} />
+        </div>
+        {entries.length > 1 && (
+          <Link
+            to={`/log?bike=${bikeId}&task=${taskType.id}`}
+            className="shrink-0 rounded-lg px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/40"
+          >
+            Log…
+          </Link>
+        )}
+      </div>
+      <div className="mt-2 flex flex-col divide-y divide-slate-100 border-t border-slate-100 dark:divide-slate-800 dark:border-slate-800">
+        {entries.map(({ rule, status }) => (
+          <div key={rule.id} className="flex items-center justify-between gap-2 py-2 last:pb-0">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium text-slate-700 dark:text-slate-300">{rule.position}</p>
+                {status.status !== 'ok' && <StatusBadge status={status.status} />}
+              </div>
+              <StatusLine status={status} unit={unit} />
+            </div>
+            <RowActions
+              logHref={`/log?bike=${bikeId}&task=${taskType.id}&position=${encodeURIComponent(rule.position)}`}
+              onEdit={() => onEdit(rule.id)}
+            />
+          </div>
+        ))}
       </div>
     </div>
   )
@@ -223,15 +342,25 @@ function MileageDialog({
 
 function TrackTaskDialog({
   options,
+  untrackedPositionsFor,
   onClose,
   onSave,
 }: {
   options: TaskType[]
+  untrackedPositionsFor: (taskType: TaskType) => string[]
   onClose: () => void
-  onSave: (taskType: TaskType) => void
+  onSave: (taskType: TaskType, positions: string[]) => void
 }) {
   const [selectedId, setSelectedId] = useState(options[0]?.id ?? '')
   const selected = options.find((t) => t.id === selectedId)
+  const available = selected ? untrackedPositionsFor(selected) : []
+  const [positions, setPositions] = useState<string[]>(() => (options[0] ? untrackedPositionsFor(options[0]) : []))
+
+  function selectTaskType(id: string) {
+    setSelectedId(id)
+    const taskType = options.find((t) => t.id === id)
+    setPositions(taskType ? untrackedPositionsFor(taskType) : [])
+  }
 
   return (
     <Dialog title="Track a task" onClose={onClose}>
@@ -243,7 +372,7 @@ function TrackTaskDialog({
         <>
           <select
             value={selectedId}
-            onChange={(e) => setSelectedId(e.target.value)}
+            onChange={(e) => selectTaskType(e.target.value)}
             className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
           >
             {options.map((t) => (
@@ -252,7 +381,30 @@ function TrackTaskDialog({
               </option>
             ))}
           </select>
-          <DialogActions onClose={onClose} onSave={() => selected && onSave(selected)} disabled={!selected} />
+          {selected && hasPositions(selected) && (
+            <div className="mt-3 flex flex-col gap-1.5">
+              {available.map((position) => (
+                <label key={position} className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={positions.includes(position)}
+                    onChange={(e) =>
+                      setPositions((current) =>
+                        e.target.checked ? [...current, position] : current.filter((p) => p !== position),
+                      )
+                    }
+                    className="rounded border-slate-300 dark:border-slate-700"
+                  />
+                  {position}
+                </label>
+              ))}
+            </div>
+          )}
+          <DialogActions
+            onClose={onClose}
+            onSave={() => selected && onSave(selected, available.filter((p) => positions.includes(p)))}
+            disabled={!selected || positions.length === 0}
+          />
         </>
       )}
     </Dialog>
@@ -260,25 +412,27 @@ function TrackTaskDialog({
 }
 
 function EditIntervalDialog({
-  taskTypeName,
+  title,
   intervalMiles,
   intervalDays,
   unit,
   onClose,
   onSave,
+  onStopTracking,
 }: {
-  taskTypeName: string
+  title: string
   intervalMiles: number | null
   intervalDays: number | null
   unit: string
   onClose: () => void
   onSave: (miles: number | null, days: number | null) => void
+  onStopTracking: () => void
 }) {
   const [miles, setMiles] = useState(intervalMiles != null ? String(intervalMiles) : '')
   const [days, setDays] = useState(intervalDays != null ? String(intervalDays) : '')
 
   return (
-    <Dialog title={`${taskTypeName} interval`} onClose={onClose}>
+    <Dialog title={`${title} interval`} onClose={onClose}>
       <label className="block">
         <span className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">
           Every N {unit}
@@ -305,6 +459,12 @@ function EditIntervalDialog({
         onClose={onClose}
         onSave={() => onSave(miles ? Number(miles) : null, days ? Number(days) : null)}
       />
+      <button
+        onClick={onStopTracking}
+        className="mt-3 w-full text-center text-xs font-medium text-red-600 hover:underline dark:text-red-400"
+      >
+        Stop tracking on this bike
+      </button>
     </Dialog>
   )
 }
@@ -371,7 +531,8 @@ function History({ bikeId, unit }: { bikeId: string; unit: string }) {
     if (toDate && log.date_performed > toDate) return false
     if (search) {
       const taskType = taskTypes.find((t) => t.id === log.task_type_id)
-      const haystack = `${taskType?.name ?? ''} ${log.notes ?? ''}`.toLowerCase()
+      const haystack =
+        `${taskType?.name ?? ''} ${log.position ?? ''} ${log.part_details ?? ''} ${log.notes ?? ''}`.toLowerCase()
       if (!haystack.includes(search.toLowerCase())) return false
     }
     return true
@@ -387,7 +548,7 @@ function History({ bikeId, unit }: { bikeId: string; unit: string }) {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search notes or task…"
+            placeholder="Search task, part or notes…"
             className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
           />
         </div>
@@ -434,7 +595,7 @@ function History({ bikeId, unit }: { bikeId: string; unit: string }) {
               >
                 <div className="flex items-center justify-between">
                   <p className="font-medium text-slate-900 dark:text-slate-100">
-                    {taskType?.name ?? 'Unknown task'}
+                    {taskType ? taskLabel(taskType.name, log.position) : 'Unknown task'}
                   </p>
                   <button
                     onClick={() => confirm('Delete this log entry?') && deleteLog(log.id)}
@@ -448,6 +609,9 @@ function History({ bikeId, unit }: { bikeId: string; unit: string }) {
                   {log.mileage_at_service != null && ` · ${log.mileage_at_service.toLocaleString()} ${unit}`}
                   {` · ${log.performed_by === 'diy' ? 'DIY' : 'Shop'}`}
                 </p>
+                {log.part_details && (
+                  <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">{log.part_details}</p>
+                )}
                 {log.notes && <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{log.notes}</p>}
               </div>
             )

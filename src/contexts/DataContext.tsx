@@ -19,11 +19,12 @@ interface DataContextValue {
   updateTaskType: (id: string, patch: Partial<TaskType>) => Promise<void>
   deleteTaskType: (id: string) => Promise<void>
 
-  createLog: (log: Partial<MaintenanceLog>) => Promise<MaintenanceLog>
+  /** Inserts several logs at once, e.g. one per position ticked on the Log Task form. */
+  createLogs: (logs: Partial<MaintenanceLog>[]) => Promise<MaintenanceLog[]>
   updateLog: (id: string, patch: Partial<MaintenanceLog>) => Promise<void>
   deleteLog: (id: string) => Promise<void>
 
-  upsertRule: (rule: Partial<ReminderRule> & { bike_id: string; task_type_id: string }) => Promise<void>
+  upsertRule: (rule: Partial<ReminderRule> & { bike_id: string; task_type_id: string; position: string }) => Promise<void>
   deleteRule: (id: string) => Promise<void>
 }
 
@@ -105,7 +106,51 @@ export function DataProvider({ children }: { children: ReactNode }) {
   async function updateTaskType(id: string, patch: Partial<TaskType>) {
     const { error } = await supabase.from('task_types').update(patch).eq('id', id)
     if (error) throw error
+
+    const existing = taskTypes.find((t) => t.id === id)
+    if (existing && patch.positions !== undefined) {
+      await syncRulePositions(id, existing.positions ?? [], patch.positions ?? [])
+    }
+
     await refresh()
+  }
+
+  /**
+   * Keeps each bike's reminder rules in line with a task type's positions:
+   * newly added positions get a rule (copying the bike's interval override),
+   * removed positions lose theirs. A position a bike deliberately stopped
+   * tracking stays untracked unless it's newly added.
+   */
+  async function syncRulePositions(taskTypeId: string, oldPositions: string[], newPositions: string[]) {
+    const oldKeys = oldPositions.length ? oldPositions : ['']
+    const newKeys = newPositions.length ? newPositions : ['']
+    const added = newKeys.filter((p) => !oldKeys.includes(p))
+
+    const taskRules = rules.filter((r) => r.task_type_id === taskTypeId)
+    const bikeIds = [...new Set(taskRules.map((r) => r.bike_id))]
+
+    const toInsert = bikeIds.flatMap((bikeId) => {
+      const template = taskRules.find((r) => r.bike_id === bikeId)!
+      return added.map((position) => ({
+        bike_id: bikeId,
+        task_type_id: taskTypeId,
+        position,
+        interval_miles: template.interval_miles,
+        interval_days: template.interval_days,
+      }))
+    })
+    const toDelete = taskRules.filter((r) => !newKeys.includes(r.position)).map((r) => r.id)
+
+    if (toInsert.length) {
+      const { error } = await supabase
+        .from('reminder_rules')
+        .upsert(toInsert, { onConflict: 'bike_id,task_type_id,position', ignoreDuplicates: true })
+      if (error) throw error
+    }
+    if (toDelete.length) {
+      const { error } = await supabase.from('reminder_rules').delete().in('id', toDelete)
+      if (error) throw error
+    }
   }
 
   async function deleteTaskType(id: string) {
@@ -114,23 +159,34 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await refresh()
   }
 
-  async function createLog(log: Partial<MaintenanceLog>): Promise<MaintenanceLog> {
-    const { data, error } = await supabase.from('maintenance_logs').insert(log).select().single()
+  async function createLogs(newLogs: Partial<MaintenanceLog>[]): Promise<MaintenanceLog[]> {
+    const { data, error } = await supabase.from('maintenance_logs').insert(newLogs).select()
     if (error) throw error
 
-    if (log.bike_id && log.task_type_id) {
-      const existingRule = rules.find((r) => r.bike_id === log.bike_id && r.task_type_id === log.task_type_id)
-      if (!existingRule) {
-        const taskType = taskTypes.find((t) => t.id === log.task_type_id)
-        if (taskType) {
-          await supabase.from('reminder_rules').insert({
-            bike_id: log.bike_id,
-            task_type_id: log.task_type_id,
-            interval_miles: taskType.default_interval_miles,
-            interval_days: taskType.default_interval_days,
-          })
-        }
-      }
+    // Start tracking anything logged that isn't tracked yet, using the task
+    // type's default interval.
+    const missingRules = newLogs.flatMap((log) => {
+      const taskType = taskTypes.find((t) => t.id === log.task_type_id)
+      if (!log.bike_id || !taskType) return []
+      const position = log.position ?? ''
+      const tracked = rules.some(
+        (r) => r.bike_id === log.bike_id && r.task_type_id === taskType.id && r.position === position,
+      )
+      if (tracked) return []
+      return [
+        {
+          bike_id: log.bike_id,
+          task_type_id: taskType.id,
+          position,
+          interval_miles: taskType.default_interval_miles,
+          interval_days: taskType.default_interval_days,
+        },
+      ]
+    })
+    if (missingRules.length) {
+      await supabase
+        .from('reminder_rules')
+        .upsert(missingRules, { onConflict: 'bike_id,task_type_id,position', ignoreDuplicates: true })
     }
 
     await refresh()
@@ -149,10 +205,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await refresh()
   }
 
-  async function upsertRule(rule: Partial<ReminderRule> & { bike_id: string; task_type_id: string }) {
+  async function upsertRule(rule: Partial<ReminderRule> & { bike_id: string; task_type_id: string; position: string }) {
     const { error } = await supabase
       .from('reminder_rules')
-      .upsert(rule, { onConflict: 'bike_id,task_type_id' })
+      .upsert(rule, { onConflict: 'bike_id,task_type_id,position' })
     if (error) throw error
     await refresh()
   }
@@ -178,7 +234,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         createTaskType,
         updateTaskType,
         deleteTaskType,
-        createLog,
+        createLogs,
         updateLog,
         deleteLog,
         upsertRule,
