@@ -2,15 +2,21 @@ import { useState, type FormEvent, type ReactNode } from 'react'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { useData } from '../contexts/DataContext'
+import type { TaskType } from '../types'
 
 export function LogTask() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { bikes, taskTypes, createLog, updateBike } = useData()
+  const { bikes, taskTypes, logs, rules, createLogs, updateBike } = useData()
   const activeBikes = bikes.filter((b) => !b.archived)
 
   const [bikeId, setBikeId] = useState(searchParams.get('bike') ?? activeBikes[0]?.id ?? '')
-  const [taskTypeId, setTaskTypeId] = useState('')
+  const [taskTypeId, setTaskTypeId] = useState(searchParams.get('task') ?? '')
+  const [positions, setPositions] = useState<string[]>(() => {
+    const position = searchParams.get('position')
+    return position ? [position] : []
+  })
+  const [partDetails, setPartDetails] = useState('')
   const [datePerformed, setDatePerformed] = useState(() => new Date().toISOString().slice(0, 10))
   const [mileage, setMileage] = useState('')
   const [performedBy, setPerformedBy] = useState<'diy' | 'shop'>('diy')
@@ -21,6 +27,35 @@ export function LogTask() {
 
   const selectedBike = activeBikes.find((b) => b.id === bikeId)
   const sortedTaskTypes = [...taskTypes].sort((a, b) => a.name.localeCompare(b.name))
+  const selectedTaskType = taskTypes.find((t) => t.id === taskTypeId)
+  const availablePositions = selectedTaskType?.positions ?? []
+
+  // Previously used parts for this task type, most recent first, to offer as suggestions.
+  const partSuggestions = [
+    ...new Set(
+      logs
+        .filter((l) => l.task_type_id === taskTypeId && l.part_details)
+        .map((l) => l.part_details as string),
+    ),
+  ]
+
+  function selectTaskType(taskType: TaskType | undefined) {
+    setTaskTypeId(taskType?.id ?? '')
+    setPositions([])
+  }
+
+  function togglePosition(position: string) {
+    setPositions((current) =>
+      current.includes(position) ? current.filter((p) => p !== position) : [...current, position],
+    )
+  }
+
+  // Positions tracked on this bike come first in "All", so an untracked one
+  // (e.g. no front derailleur) isn't selected by accident.
+  const trackedPositions = availablePositions.filter((p) =>
+    rules.some((r) => r.bike_id === bikeId && r.task_type_id === taskTypeId && r.position === p),
+  )
+  const allPositions = trackedPositions.length ? trackedPositions : availablePositions
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -30,18 +65,30 @@ export function LogTask() {
       setError('Choose a bike and a task type.')
       return
     }
+    if (availablePositions.length > 0 && positions.length === 0) {
+      setError('Choose which ones you did.')
+      return
+    }
 
     setSubmitting(true)
     try {
       const mileageValue = mileage ? Number(mileage) : null
-      await createLog({
+      const shared = {
         bike_id: bikeId,
         task_type_id: taskTypeId,
         date_performed: datePerformed,
         mileage_at_service: mileageValue,
         performed_by: performedBy,
+        part_details: partDetails.trim() || null,
         notes: notes.trim() || null,
-      })
+      }
+      // Keep positions in the task type's order rather than click order.
+      const orderedPositions = availablePositions.filter((p) => positions.includes(p))
+      await createLogs(
+        orderedPositions.length
+          ? orderedPositions.map((position) => ({ ...shared, position }))
+          : [{ ...shared, position: null }],
+      )
 
       if (updateOdometer && mileageValue != null && selectedBike && mileageValue > selectedBike.current_mileage) {
         await updateBike(bikeId, { current_mileage: mileageValue })
@@ -92,7 +139,7 @@ export function LogTask() {
           <select
             required
             value={taskTypeId}
-            onChange={(e) => setTaskTypeId(e.target.value)}
+            onChange={(e) => selectTaskType(taskTypes.find((t) => t.id === e.target.value))}
             className={inputClass}
           >
             <option value="" disabled>
@@ -105,6 +152,31 @@ export function LogTask() {
             ))}
           </select>
         </Field>
+
+        {availablePositions.length > 0 && (
+          <div>
+            <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Which ones?</span>
+            <div className="flex flex-wrap gap-2">
+              {availablePositions.map((position) => (
+                <ChipButton
+                  key={position}
+                  selected={positions.includes(position)}
+                  onClick={() => togglePosition(position)}
+                >
+                  {position}
+                </ChipButton>
+              ))}
+              {availablePositions.length > 1 && (
+                <ChipButton
+                  selected={allPositions.every((p) => positions.includes(p)) && positions.length === allPositions.length}
+                  onClick={() => setPositions(allPositions)}
+                >
+                  All
+                </ChipButton>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Date performed">
@@ -160,13 +232,37 @@ export function LogTask() {
           </div>
         </Field>
 
+        <Field label="Part / spec (optional)">
+          <input
+            value={partDetails}
+            onChange={(e) => setPartDetails(e.target.value)}
+            list="part-suggestions"
+            className={inputClass}
+            placeholder={partSuggestions[0] ?? 'e.g. Continental GP5000 28c, Shimano SP41 housing'}
+          />
+          <datalist id="part-suggestions">
+            {partSuggestions.map((part) => (
+              <option key={part} value={part} />
+            ))}
+          </datalist>
+          {partSuggestions[0] && !partDetails && (
+            <button
+              type="button"
+              onClick={() => setPartDetails(partSuggestions[0])}
+              className="mt-1 text-xs font-medium text-blue-600 dark:text-blue-400"
+            >
+              Same as last time
+            </button>
+          )}
+        </Field>
+
         <Field label="Notes (optional)">
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={3}
             className={inputClass}
-            placeholder="Parts used, cost, observations…"
+            placeholder="Cost, observations…"
           />
         </Field>
 
@@ -186,6 +282,31 @@ export function LogTask() {
 
 const inputClass =
   'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
+
+function ChipButton({
+  selected,
+  onClick,
+  children,
+}: {
+  selected: boolean
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      className={`rounded-full border px-3.5 py-1.5 text-sm font-medium ${
+        selected
+          ? 'border-blue-600 bg-blue-50 text-blue-700 dark:border-blue-500 dark:bg-blue-950/40 dark:text-blue-300'
+          : 'border-slate-300 text-slate-600 dark:border-slate-700 dark:text-slate-400'
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (

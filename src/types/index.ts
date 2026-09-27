@@ -30,6 +30,8 @@ export interface TaskType {
   default_interval_type: IntervalType
   default_interval_miles: number | null
   default_interval_days: number | null
+  /** Parts tracked separately, e.g. ['Front', 'Rear']. Null/empty = single item. */
+  positions: string[] | null
   is_preset: boolean
   created_at: string
 }
@@ -41,6 +43,9 @@ export interface MaintenanceLog {
   date_performed: string
   mileage_at_service: number | null
   performed_by: PerformedBy
+  /** Null means the whole task, which counts towards every position. */
+  position: string | null
+  part_details: string | null
   notes: string | null
   created_at: string
 }
@@ -49,6 +54,8 @@ export interface ReminderRule {
   id: string
   bike_id: string
   task_type_id: string
+  /** '' when the task type has no positions. */
+  position: string
   interval_miles: number | null
   interval_days: number | null
   last_notified_status: ReminderStatus | null
@@ -67,6 +74,7 @@ export interface PushSubscriptionRow {
 export interface TaskStatus {
   taskTypeId: string
   taskTypeName: string
+  position: string | null
   status: ReminderStatus
   lastServiceDate: string | null
   lastServiceMileage: number | null

@@ -10,17 +10,32 @@ interface ComputeArgs {
   now?: Date
 }
 
+export function hasPositions(taskType: TaskType): boolean {
+  return (taskType.positions?.length ?? 0) > 0
+}
+
+/** "Tire replacement · Rear", or just the task name when there's no position. */
+export function taskLabel(taskTypeName: string, position: string | null | undefined): string {
+  return position ? `${taskTypeName} · ${position}` : taskTypeName
+}
+
+/** Whether a log counts towards a position. Logs without a position cover every position. */
+export function logCoversPosition(log: MaintenanceLog, position: string | null): boolean {
+  return !position || !log.position || log.position === position
+}
+
 /**
- * Computes the status of a single (bike, task type) pair from the most recent
- * matching log entry plus the effective interval (rule override, falling back
- * to the task type default).
+ * Computes the status of a single (bike, task type, position) from the most
+ * recent matching log entry plus the effective interval (rule override,
+ * falling back to the task type default).
  */
 export function computeTaskStatus({ bike, taskType, rule, logs, now = new Date() }: ComputeArgs): TaskStatus {
   const intervalMiles = rule?.interval_miles ?? taskType.default_interval_miles ?? null
   const intervalDays = rule?.interval_days ?? taskType.default_interval_days ?? null
+  const position = rule?.position || null
 
   const matchingLogs = logs
-    .filter((log) => log.task_type_id === taskType.id)
+    .filter((log) => log.task_type_id === taskType.id && logCoversPosition(log, position))
     .sort((a, b) => new Date(b.date_performed).getTime() - new Date(a.date_performed).getTime())
 
   const lastLog = matchingLogs[0]
@@ -28,6 +43,7 @@ export function computeTaskStatus({ bike, taskType, rule, logs, now = new Date()
   const base: TaskStatus = {
     taskTypeId: taskType.id,
     taskTypeName: taskType.name,
+    position,
     status: 'not_tracked',
     lastServiceDate: lastLog?.date_performed ?? null,
     lastServiceMileage: lastLog?.mileage_at_service ?? null,
@@ -93,7 +109,7 @@ function deriveStatus({
   return 'ok'
 }
 
-/** Computes statuses for every task type a bike has a reminder rule for. */
+/** Computes statuses for every (task type, position) a bike has a reminder rule for. */
 export function computeBikeStatuses(args: {
   bike: Bike
   taskTypes: TaskType[]

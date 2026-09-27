@@ -34,6 +34,7 @@ interface ReminderRule {
   id: string
   bike_id: string
   task_type_id: string
+  position: string
   interval_miles: number | null
   interval_days: number | null
   last_notified_status: ReminderStatus | null
@@ -42,6 +43,7 @@ interface ReminderRule {
 interface MaintenanceLog {
   bike_id: string
   task_type_id: string
+  position: string | null
   date_performed: string
   mileage_at_service: number | null
 }
@@ -101,8 +103,8 @@ Deno.serve(async (req) => {
   const [{ data: bikes }, { data: taskTypes }, { data: rules }, { data: logs }, { data: subs }] = await Promise.all([
     supabase.from('bikes').select('id, user_id, name, current_mileage').eq('archived', false),
     supabase.from('task_types').select('id, name, default_interval_miles, default_interval_days'),
-    supabase.from('reminder_rules').select('id, bike_id, task_type_id, interval_miles, interval_days, last_notified_status'),
-    supabase.from('maintenance_logs').select('bike_id, task_type_id, date_performed, mileage_at_service'),
+    supabase.from('reminder_rules').select('id, bike_id, task_type_id, position, interval_miles, interval_days, last_notified_status'),
+    supabase.from('maintenance_logs').select('bike_id, task_type_id, position, date_performed, mileage_at_service'),
     supabase.from('push_subscriptions').select('id, user_id, endpoint, p256dh, auth'),
   ])
 
@@ -123,8 +125,12 @@ Deno.serve(async (req) => {
     const taskType = taskTypesById.get(rule.task_type_id)
     if (!bike || !taskType) continue
 
+    // A log without a position covers every position of the task.
     const matchingLogs = (logs ?? []).filter(
-      (l: MaintenanceLog) => l.bike_id === rule.bike_id && l.task_type_id === rule.task_type_id,
+      (l: MaintenanceLog) =>
+        l.bike_id === rule.bike_id &&
+        l.task_type_id === rule.task_type_id &&
+        (!rule.position || !l.position || l.position === rule.position),
     )
     matchingLogs.sort((a, b) => new Date(b.date_performed).getTime() - new Date(a.date_performed).getTime())
     const lastLog = matchingLogs[0]
@@ -137,8 +143,9 @@ Deno.serve(async (req) => {
 
     if (status === 'due_soon' || status === 'overdue') {
       const userSubs = subsByUser.get(bike.user_id) ?? []
-      const title = status === 'overdue' ? `${taskType.name} overdue` : `${taskType.name} due soon`
-      const body = `${bike.name}: ${taskType.name} is ${status === 'overdue' ? 'overdue' : 'coming up'}.`
+      const label = rule.position ? `${taskType.name} (${rule.position})` : taskType.name
+      const title = status === 'overdue' ? `${label} overdue` : `${label} due soon`
+      const body = `${bike.name}: ${label} is ${status === 'overdue' ? 'overdue' : 'coming up'}.`
 
       for (const sub of userSubs) {
         try {

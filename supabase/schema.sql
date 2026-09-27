@@ -18,7 +18,8 @@ create table if not exists public.task_type_presets (
   name text not null,
   default_interval_type text not null check (default_interval_type in ('mileage', 'time', 'both')),
   default_interval_miles numeric,
-  default_interval_days integer
+  default_interval_days integer,
+  positions text[]
 );
 
 create table if not exists public.task_types (
@@ -28,6 +29,9 @@ create table if not exists public.task_types (
   default_interval_type text not null check (default_interval_type in ('mileage', 'time', 'both')),
   default_interval_miles numeric,
   default_interval_days integer,
+  -- Parts of the task tracked separately, e.g. {Front,Rear}. Null or empty
+  -- means the task is tracked as a single item.
+  positions text[],
   is_preset boolean not null default false,
   created_at timestamptz not null default now()
 );
@@ -52,6 +56,11 @@ create table if not exists public.maintenance_logs (
   date_performed date not null,
   mileage_at_service numeric,
   performed_by text not null check (performed_by in ('diy', 'shop')),
+  -- Which of the task type's positions this log covers. Null means the whole
+  -- task, so it counts towards every position.
+  position text,
+  -- Parts used, e.g. "GP5000 28c" or "SP41 housing + 1.1mm stainless inner".
+  part_details text,
   notes text,
   created_at timestamptz not null default now()
 );
@@ -60,13 +69,15 @@ create table if not exists public.reminder_rules (
   id uuid primary key default gen_random_uuid(),
   bike_id uuid not null references public.bikes (id) on delete cascade,
   task_type_id uuid not null references public.task_types (id) on delete cascade,
+  -- One rule per tracked position; '' when the task type has no positions.
+  position text not null default '',
   interval_miles numeric,
   interval_days integer,
   -- last status the send-reminders Edge Function notified the user about,
   -- so a push only fires again when the status actually changes.
   last_notified_status text,
   created_at timestamptz not null default now(),
-  unique (bike_id, task_type_id)
+  unique (bike_id, task_type_id, position)
 );
 
 create table if not exists public.push_subscriptions (
@@ -155,8 +166,8 @@ as $$
 begin
   insert into public.profiles (id) values (new.id);
 
-  insert into public.task_types (user_id, name, default_interval_type, default_interval_miles, default_interval_days, is_preset)
-  select new.id, name, default_interval_type, default_interval_miles, default_interval_days, true
+  insert into public.task_types (user_id, name, default_interval_type, default_interval_miles, default_interval_days, positions, is_preset)
+  select new.id, name, default_interval_type, default_interval_miles, default_interval_days, positions, true
   from public.task_type_presets;
 
   return new;
@@ -173,12 +184,18 @@ create trigger on_auth_user_created
 -- table editor — this only affects future signups, not existing users)
 -- ─────────────────────────────────────────────────────────────────────────
 
-insert into public.task_type_presets (name, default_interval_type, default_interval_miles, default_interval_days) values
-  ('Chain lube', 'mileage', 150, null),
-  ('Chain replacement', 'mileage', 2000, null),
-  ('Brake pads', 'mileage', 1500, null),
-  ('Tire replacement', 'mileage', 3000, null),
-  ('Cable replacement', 'both', 2000, 365),
-  ('Bearing service', 'time', null, 365),
-  ('Full tune-up', 'both', 1000, 180)
+insert into public.task_type_presets (name, default_interval_type, default_interval_miles, default_interval_days, positions) values
+  ('Chain lube', 'mileage', 150, null, null),
+  ('Chain replacement', 'mileage', 2000, null, null),
+  ('Cassette replacement', 'mileage', 6000, null, null),
+  ('Brake pads', 'mileage', 1500, null, '{Front,Rear}'),
+  ('Brake rotors', 'mileage', 6000, null, '{Front,Rear}'),
+  ('Brake bleed', 'time', null, 365, '{Front,Rear}'),
+  ('Tire replacement', 'mileage', 3000, null, '{Front,Rear}'),
+  ('Tubeless sealant', 'time', null, 120, '{Front,Rear}'),
+  ('Cable replacement', 'both', 2000, 365, '{Front brake,Rear brake,Front shift,Rear shift}'),
+  ('Hub bearing service', 'time', null, 365, '{Front,Rear}'),
+  ('Suspension service', 'time', null, 365, '{Fork,Shock}'),
+  ('Bearing service', 'time', null, 365, null),
+  ('Full tune-up', 'both', 1000, 180, null)
 on conflict do nothing;
