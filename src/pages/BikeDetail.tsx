@@ -474,10 +474,10 @@ function EditIntervalDialog({
 
 function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
-    <div className="fixed inset-0 z-20 flex items-end justify-center bg-black/40 sm:items-center" onClick={onClose}>
+    <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/40 px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]" onClick={onClose}>
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-sm rounded-t-2xl bg-white p-5 dark:bg-slate-900 sm:rounded-2xl"
+        className="max-h-full w-full max-w-sm overflow-y-auto rounded-2xl bg-white p-5 dark:bg-slate-900"
       >
         <div className="mb-3 flex items-center justify-between">
           <h3 className="font-medium text-slate-900 dark:text-slate-100">{title}</h3>
