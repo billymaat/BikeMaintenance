@@ -10,7 +10,7 @@ export function Dashboard() {
   const activeBikes = bikes.filter((b) => !b.archived)
 
   return (
-    <div className="px-4 pt-6">
+    <div>
       <div className="mb-5 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Your Fleet</h1>
         <Link
@@ -30,7 +30,7 @@ export function Dashboard() {
           </p>
         </div>
       ) : (
-        <div className="flex flex-col gap-3">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {activeBikes.map((bike) => (
             <BikeCard
               key={bike.id}

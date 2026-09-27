@@ -57,7 +57,7 @@ export function LogTask() {
 
   if (activeBikes.length === 0) {
     return (
-      <div className="px-4 pt-6">
+      <div className="mx-auto max-w-2xl">
         <p className="text-sm text-slate-500 dark:text-slate-400">
           Add a bike first before logging maintenance.
         </p>
@@ -69,7 +69,7 @@ export function LogTask() {
   }
 
   return (
-    <div className="px-4 pt-6">
+    <div className="mx-auto max-w-2xl">
       <div className="mb-5 flex items-center gap-2">
         <Link to="/" className="rounded-full p-1 hover:bg-slate-200 dark:hover:bg-slate-800">
           <ArrowLeft size={20} />

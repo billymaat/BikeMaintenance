@@ -68,7 +68,7 @@ export function AddEditBike() {
   }
 
   return (
-    <div className="px-4 pt-6">
+    <div className="mx-auto max-w-2xl">
       <div className="mb-5 flex items-center gap-2">
         <Link to={isEdit ? `/bikes/${id}` : '/'} className="rounded-full p-1 hover:bg-slate-200 dark:hover:bg-slate-800">
           <ArrowLeft size={20} />

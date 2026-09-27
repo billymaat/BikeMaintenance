@@ -37,7 +37,7 @@ export function BikeDetail() {
     })
 
   return (
-    <div className="px-4 pt-6">
+    <div className="mx-auto max-w-6xl">
       <div className="mb-5 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Link to="/" className="rounded-full p-1 hover:bg-slate-200 dark:hover:bg-slate-800">
@@ -50,140 +50,144 @@ export function BikeDetail() {
         </Link>
       </div>
 
-      {bike.archived && (
-        <div className="mb-4 rounded-lg bg-slate-200 px-3 py-2 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400">
-          This bike is archived
-        </div>
-      )}
+      <div className="lg:grid lg:grid-cols-2 lg:items-start lg:gap-8">
+        <div>
+          {bike.archived && (
+            <div className="mb-4 rounded-lg bg-slate-200 px-3 py-2 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+              This bike is archived
+            </div>
+          )}
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{bike.bike_type}</p>
-            <p className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
-              {bike.current_mileage.toLocaleString()} <span className="text-base font-normal">{unit}</span>
-            </p>
-          </div>
-          <button
-            onClick={() => setShowMileageForm(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-          >
-            <Gauge size={16} /> Update
-          </button>
-        </div>
-
-        {bike.notes && (
-          <p className="mt-3 whitespace-pre-wrap border-t border-slate-100 pt-3 text-sm text-slate-600 dark:border-slate-800 dark:text-slate-400">
-            {bike.notes}
-          </p>
-        )}
-      </div>
-
-      {showMileageForm && (
-        <MileageDialog
-          currentMileage={bike.current_mileage}
-          unit={unit}
-          onClose={() => setShowMileageForm(false)}
-          onSave={async (value) => {
-            await updateBike(bike.id, { current_mileage: value })
-            setShowMileageForm(false)
-          }}
-        />
-      )}
-
-      <div className="mt-6">
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="font-medium text-slate-900 dark:text-slate-100">Tracked tasks</h2>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowAddTask(true)}
-              className="flex items-center gap-1 text-sm font-medium text-blue-600 dark:text-blue-400"
-            >
-              <Plus size={16} /> Track task
-            </button>
-            <Link to={`/log?bike=${bike.id}`} className="text-sm font-medium text-blue-600 dark:text-blue-400">
-              Log task
-            </Link>
-          </div>
-        </div>
-
-        {taskStatuses.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-slate-300 p-4 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
-            No tasks tracked yet.
-          </p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {taskStatuses.map(({ rule, taskType, status }) => (
-              <div
-                key={rule.id}
-                className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900"
-              >
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="font-medium text-slate-900 dark:text-slate-100">{taskType.name}</p>
-                    <StatusBadge status={status.status} />
-                  </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {status.lastServiceDate
-                      ? `Last: ${status.lastServiceDate}${status.lastServiceMileage != null ? ` at ${status.lastServiceMileage.toLocaleString()} ${unit}` : ''}`
-                      : 'Never logged'}
-                    {status.nextDueMileage != null && ` · Due at ${status.nextDueMileage.toLocaleString()} ${unit}`}
-                    {status.nextDueDate && ` · Due ${status.nextDueDate}`}
-                  </p>
-                </div>
-                <button
-                  onClick={() => setEditingRuleTaskTypeId(taskType.id)}
-                  className="shrink-0 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-                >
-                  <Pencil size={16} />
-                </button>
+          <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{bike.bike_type}</p>
+                <p className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
+                  {bike.current_mileage.toLocaleString()} <span className="text-base font-normal">{unit}</span>
+                </p>
               </div>
-            ))}
+              <button
+                onClick={() => setShowMileageForm(true)}
+                className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                <Gauge size={16} /> Update
+              </button>
+            </div>
+
+            {bike.notes && (
+              <p className="mt-3 whitespace-pre-wrap border-t border-slate-100 pt-3 text-sm text-slate-600 dark:border-slate-800 dark:text-slate-400">
+                {bike.notes}
+              </p>
+            )}
           </div>
-        )}
-      </div>
 
-      {showAddTask && (
-        <TrackTaskDialog
-          options={untrackedTaskTypes}
-          onClose={() => setShowAddTask(false)}
-          onSave={async (taskType) => {
-            await upsertRule({
-              bike_id: bike.id,
-              task_type_id: taskType.id,
-              interval_miles: taskType.default_interval_miles,
-              interval_days: taskType.default_interval_days,
-            })
-            setShowAddTask(false)
-          }}
-        />
-      )}
-
-      {editingRuleTaskTypeId &&
-        (() => {
-          const entry = taskStatuses.find((t) => t.taskType.id === editingRuleTaskTypeId)
-          if (!entry) return null
-          return (
-            <EditIntervalDialog
-              taskTypeName={entry.taskType.name}
-              intervalMiles={entry.rule.interval_miles}
-              intervalDays={entry.rule.interval_days}
+          {showMileageForm && (
+            <MileageDialog
+              currentMileage={bike.current_mileage}
               unit={unit}
-              onClose={() => setEditingRuleTaskTypeId(null)}
-              onSave={async (intervalMiles, intervalDays) => {
-                await upsertRule({
-                  bike_id: bike.id,
-                  task_type_id: entry.taskType.id,
-                  interval_miles: intervalMiles,
-                  interval_days: intervalDays,
-                })
-                setEditingRuleTaskTypeId(null)
+              onClose={() => setShowMileageForm(false)}
+              onSave={async (value) => {
+                await updateBike(bike.id, { current_mileage: value })
+                setShowMileageForm(false)
               }}
             />
-          )
-        })()}
+          )}
 
-      <History bikeId={bike.id} unit={unit} />
+          <div className="mt-6">
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="font-medium text-slate-900 dark:text-slate-100">Tracked tasks</h2>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowAddTask(true)}
+                  className="flex items-center gap-1 text-sm font-medium text-blue-600 dark:text-blue-400"
+                >
+                  <Plus size={16} /> Track task
+                </button>
+                <Link to={`/log?bike=${bike.id}`} className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                  Log task
+                </Link>
+              </div>
+            </div>
+
+            {taskStatuses.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-slate-300 p-4 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                No tasks tracked yet.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {taskStatuses.map(({ rule, taskType, status }) => (
+                  <div
+                    key={rule.id}
+                    className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-slate-900 dark:text-slate-100">{taskType.name}</p>
+                        <StatusBadge status={status.status} />
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        {status.lastServiceDate
+                          ? `Last: ${status.lastServiceDate}${status.lastServiceMileage != null ? ` at ${status.lastServiceMileage.toLocaleString()} ${unit}` : ''}`
+                          : 'Never logged'}
+                        {status.nextDueMileage != null && ` · Due at ${status.nextDueMileage.toLocaleString()} ${unit}`}
+                        {status.nextDueDate && ` · Due ${status.nextDueDate}`}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setEditingRuleTaskTypeId(taskType.id)}
+                      className="shrink-0 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+                    >
+                      <Pencil size={16} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {showAddTask && (
+            <TrackTaskDialog
+              options={untrackedTaskTypes}
+              onClose={() => setShowAddTask(false)}
+              onSave={async (taskType) => {
+                await upsertRule({
+                  bike_id: bike.id,
+                  task_type_id: taskType.id,
+                  interval_miles: taskType.default_interval_miles,
+                  interval_days: taskType.default_interval_days,
+                })
+                setShowAddTask(false)
+              }}
+            />
+          )}
+
+          {editingRuleTaskTypeId &&
+            (() => {
+              const entry = taskStatuses.find((t) => t.taskType.id === editingRuleTaskTypeId)
+              if (!entry) return null
+              return (
+                <EditIntervalDialog
+                  taskTypeName={entry.taskType.name}
+                  intervalMiles={entry.rule.interval_miles}
+                  intervalDays={entry.rule.interval_days}
+                  unit={unit}
+                  onClose={() => setEditingRuleTaskTypeId(null)}
+                  onSave={async (intervalMiles, intervalDays) => {
+                    await upsertRule({
+                      bike_id: bike.id,
+                      task_type_id: entry.taskType.id,
+                      interval_miles: intervalMiles,
+                      interval_days: intervalDays,
+                    })
+                    setEditingRuleTaskTypeId(null)
+                  }}
+                />
+              )
+            })()}
+        </div>
+
+        <History bikeId={bike.id} unit={unit} />
+      </div>
     </div>
   )
 }
@@ -374,7 +378,7 @@ function History({ bikeId, unit }: { bikeId: string; unit: string }) {
   })
 
   return (
-    <div className="mt-6">
+    <div className="mt-6 lg:mt-0">
       <h2 className="mb-2 font-medium text-slate-900 dark:text-slate-100">History</h2>
 
       <div className="mb-3 flex flex-col gap-2">

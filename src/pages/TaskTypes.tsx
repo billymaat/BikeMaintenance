@@ -15,7 +15,7 @@ export function TaskTypes() {
   }
 
   return (
-    <div className="px-4 pt-6">
+    <div className="mx-auto max-w-3xl">
       <div className="mb-5 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Task Types</h1>
         <button

@@ -46,7 +46,7 @@ export function Settings() {
   }
 
   return (
-    <div className="px-4 pt-6">
+    <div className="mx-auto max-w-2xl">
       <h1 className="mb-5 text-xl font-semibold text-slate-900 dark:text-slate-100">Settings</h1>
 
       <Section title="Appearance">
