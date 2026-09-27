@@ -2,12 +2,15 @@ import { useState, type FormEvent, type ReactNode } from 'react'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { useData } from '../contexts/DataContext'
+import { useAuth } from '../contexts/AuthContext'
+import { effectiveUnit } from '../lib/units'
 import type { TaskType } from '../types'
 
 export function LogTask() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { bikes, taskTypes, logs, rules, createLogs, updateBike } = useData()
+  const { profile } = useAuth()
   const activeBikes = bikes.filter((b) => !b.archived)
 
   const [bikeId, setBikeId] = useState(searchParams.get('bike') ?? activeBikes[0]?.id ?? '')
@@ -188,7 +191,7 @@ export function LogTask() {
               className={inputClass}
             />
           </Field>
-          <Field label={`Mileage${selectedBike?.unit_override ? ` (${selectedBike.unit_override})` : ''}`}>
+          <Field label={`Mileage${selectedBike ? ` (${effectiveUnit(selectedBike, profile)})` : ''}`}>
             <input
               type="number"
               min={0}

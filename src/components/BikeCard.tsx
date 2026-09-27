@@ -3,11 +3,14 @@ import { ChevronRight } from 'lucide-react'
 import type { Bike, TaskStatus } from '../types'
 import { StatusBadge, worstStatus } from './StatusBadge'
 import { summarizeStatuses } from '../lib/reminders'
+import { effectiveUnit } from '../lib/units'
+import { useAuth } from '../contexts/AuthContext'
 
 export function BikeCard({ bike, statuses }: { bike: Bike; statuses: TaskStatus[] }) {
   const summary = summarizeStatuses(statuses)
   const overall = worstStatus(statuses.map((s) => s.status))
-  const unit = bike.unit_override ?? 'mi'
+  const { profile } = useAuth()
+  const unit = effectiveUnit(bike, profile)
 
   return (
     <Link
